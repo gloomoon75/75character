@@ -234,6 +234,11 @@ code,.mono{font-family:var(--f-mono);font-size:.92em}
 /* ===== CORE: format model, parse, serialize, checks (no DOM) ===== */
 var CORE = (function(){
   var EXTRA_N = 10;
+  // 自訂清單：key, 顯示名稱, 簡稱(側欄), 錨點前綴, 欄位 [屬性, 標題, 型態]
+  var LISTS=[
+    {key:'modes', name:'專屬模式', short:'模式', pre:'m', titleLabel:'欄位名稱', fields:[['title','欄位名稱','line'],['desc','模式說明','text'],['role','ROLE','text'],['guide','RESPONSE GUIDELINES','text']]},
+    {key:'scenes', name:'場景', short:'場景', pre:'sc', titleLabel:'標題', fields:[['title','標題','line'],['goal','場景目標','text'],['open','開場情況','text'],['bg','場景背景','text']]}
+  ];
   function blankCard(name){
     var x=[]; for(var i=0;i<EXTRA_N;i++) x.push('');
     return {id:uid(), name:name||'未命名',
@@ -241,7 +246,7 @@ var CORE = (function(){
       b:{gender:'',info:'',persona:'',speech:''},
       d:{likes:'',dislikes:'',bday:'',x:x},
       o:{script:'',dialog:''},
-      stories:[], events:[], draft:'', unknown:[]};
+      stories:[], events:[], modes:[], scenes:[], draft:'', unknown:[]};
   }
   function uid(){return Math.random().toString(36).slice(2,10)+Date.now().toString(36).slice(-4)}
 
@@ -258,16 +263,16 @@ var CORE = (function(){
     '詳細設定':['喜歡','不喜歡','生日','附加資訊'],
     '首場':['情境腳本','角色對話'],
     '故事':['解鎖故事時的提示語','故事標題','內容'],
-    '事件':['時間和地點','標題','內容']
+    '事件':['時間和地點','標題','內容'],
   };
   function get(card,path){var a=path.split('.');var o=card;for(var i=0;i<a.length;i++)o=o[a[i]];return o}
   function set(card,path,v){var a=path.split('.');var o=card;for(var i=0;i<a.length-1;i++)o=o[a[i]];o[a[a.length-1]]=v}
 
   function norm(t){return String(t||'').replace(/^﻿/,'').replace(/\r\n?/g,'\n')}
-  function parseFields(text, type){
-    var allowed = ALLOWED[type]||[];
+  function parseFields(text, type, extra){
+    var allowed = extra || ALLOWED[type]||[];
     var lines = norm(text).split('\n'), out=[], cur=null, pre=[];
-    var re = /^(\/)?(\S+(?: \d+)?)(\s*\*|\s*\(選擇性\))?(.*)$/;
+    var re = /^(\/)?(RESPONSE GUIDELINES|\S+(?: \d+)?)(\s*\*|\s*\(選擇性\))?(.*)$/;
     for(var i=0;i<lines.length;i++){
       var L=lines[i], m=L.match(re), lab=m&&m[2];
       if(m){ var base=lab.replace(/\s*\d+$/,''); if(allowed.indexOf(base)<0 && allowed.indexOf(lab)<0) m=null; }
@@ -284,7 +289,7 @@ var CORE = (function(){
   }
 
   function cardFromFiles(folderName, files){ // files: {basename(no .txt): text}
-    var c=blankCard(folderName), st=[], ev=[];
+    var c=blankCard(folderName), st=[], ev=[], lx={};
     Object.keys(files).forEach(function(k){
       var t=files[k], m;
       if(FILES[k]){
@@ -302,9 +307,15 @@ var CORE = (function(){
         var ef=parseFields(t,'事件').fields, e={n:+m[1],loc:'',title:'',content:''};
         ef.forEach(function(f){ if(f.label==='時間和地點')e.loc=f.value; if(f.label==='標題')e.title=f.value; if(f.label==='內容')e.content=f.value; });
         ev.push(e);
+      } else if((m=k.match(/^(.+?)-(\d+)(?:-.*)?$/)) && LISTS.some(function(L){return L.name===m[1]})){
+        var L=LISTS.filter(function(L){return L.name===m[1]})[0], o={n:+m[2]}, labs=L.fields.map(function(f){return f[1]});
+        L.fields.forEach(function(f){o[f[0]]=''});
+        parseFields(t,L.name,labs).fields.forEach(function(f){ var d=L.fields.filter(function(x){return x[1]===f.label})[0]; if(d) o[d[0]]=f.value; });
+        (lx[L.key]=lx[L.key]||[]).push(o);
       } else c.unknown.push({name:k, text:norm(t)});
     });
     st.sort(function(a,b){return a.n-b.n}); ev.sort(function(a,b){return a.n-b.n});
+    LISTS.forEach(function(L){ c[L.key]=(lx[L.key]||[]).sort(function(a,b){return a.n-b.n}).map(function(o){ var r={id:uid()}; L.fields.forEach(function(f){r[f[0]]=o[f[0]]||''}); return r; }); });
     c.stories=st.map(function(s){return {id:uid(),hint:s.hint,title:s.title,content:s.content}});
     c.events=ev.map(function(e){return {id:uid(),loc:e.loc,title:e.title,content:e.content}});
     c.name = folderName || c.p.name || '未命名';
@@ -334,6 +345,7 @@ var CORE = (function(){
     file('首場', FILES['首場'].map(function(d){return blk(d[0],d[3],d[2],get(card,d[1]))}), '第一次聊天場景');
     card.stories.forEach(function(s,i){ file(itemFile('故事',i,s.title), ['解鎖故事時的提示語'+(s.hint?'\n'+s.hint:''), '故事標題 *'+(s.title||''), '內容 *'+(s.content?'\n'+s.content:'')]) });
     card.events.forEach(function(e,i){ file(itemFile('事件',i,e.title), ['時間和地點'+(e.loc?'\n'+e.loc:''), '標題'+(e.title?'\n'+e.title:''), '內容'+(e.content?'\n'+e.content:'')]) });
+    LISTS.forEach(function(L){ (card[L.key]||[]).forEach(function(o,i){ file(itemFile(L.name,i,o.title), L.fields.map(function(f){ var v=o[f[0]]||''; return f[1]+(v?'\n'+v:''); })) }); });
     return out;
   }
 
@@ -348,6 +360,7 @@ var CORE = (function(){
     FILES['首場'].forEach(function(d){add('opening','首場',d[0],get(card,d[1]),d[1])});
     card.stories.forEach(function(s,i){add('stories','故事-'+(i+1),'內容',s.title+'\n'+s.content,'s.'+s.id)});
     card.events.forEach(function(e,i){add('events','事件-'+(i+1),'內容',e.content,'e.'+e.id)});
+    LISTS.forEach(function(L){ (card[L.key]||[]).forEach(function(o,i){add(L.key,L.name+'-'+(i+1),'內容',L.fields.map(function(f){return o[f[0]]||''}).join('\n'),L.pre+'.'+o.id)}); });
     return f;
   }
   function nz(s){return String(s||'').replace(/\s+/g,'').toLowerCase()}
@@ -360,6 +373,7 @@ var CORE = (function(){
       if(!String(get(card,r[0])||'').trim()) push('err','必填欄位「'+r[1]+'」是空的', r[2]==='profile'?'個人資料':'基本設定', r[2], r[0]);
     });
     card.stories.forEach(function(s,i){ if(!s.title.trim()||!s.content.trim()) push('err','故事缺少'+(!s.title.trim()?'標題':'內容'),'故事-'+(i+1),'stories','s.'+s.id) });
+    LISTS.forEach(function(L){ (card[L.key]||[]).forEach(function(o,i){ if(!String(o.title||'').trim()) push('warn',L.name+'沒有'+L.titleLabel,L.name+'-'+(i+1),L.key,L.pre+'.'+o.id) }); });
     // leftovers from other cards
     var own=[card.name,card.p.name].map(nz);
     (library||[]).forEach(function(o){
@@ -377,7 +391,7 @@ var CORE = (function(){
     return issues;
   }
 
-  return {itemFile:itemFile,blankCard:blankCard,uid:uid,parseFields:parseFields,cardFromFiles:cardFromFiles,serialize:serialize,check:check,FILES:FILES,EXTRA_N:EXTRA_N,get:get,set:set,norm:norm};
+  return {LISTS:LISTS,itemFile:itemFile,blankCard:blankCard,uid:uid,parseFields:parseFields,cardFromFiles:cardFromFiles,serialize:serialize,check:check,FILES:FILES,EXTRA_N:EXTRA_N,get:get,set:set,norm:norm};
 })();
 if(typeof module!=='undefined') module.exports=CORE;
 /* ===== END CORE ===== */
@@ -400,6 +414,7 @@ function load(){
   var s=null; try{ s=JSON.parse(localStorage.getItem(KEY)||'null'); }catch(e){}
   if(!s||!s.cards) s={cards:[],cur:null,tab:'profile',templates:[]};
   if(!s.templates) s.templates=[];
+  s.cards.forEach(function(c){ C.LISTS.forEach(function(L){ if(!c[L.key]) c[L.key]=[]; }); });
   s.cards.forEach(function(c){ while(c.d.x.length<C.EXTRA_N) c.d.x.push(''); });
   if(!s.cur||!s.cards.some(function(c){return c.id===s.cur})) s.cur=s.cards[0]?s.cards[0].id:null;
   return s;
@@ -431,7 +446,7 @@ function renderSide(){
   S.cards.forEach(function(c){
     var b=h('button',{type:'button','aria-current':c.id===S.cur?'true':'false',onclick:function(){S.cur=c.id;save();renderAll()}},[
       h('span',{class:'nm',text:c.name||'未命名'}),
-      h('span',{class:'meta',text:'事件 '+c.events.length+' · 故事 '+c.stories.length})]);
+      h('span',{class:'meta',text:['故事 '+c.stories.length,'事件 '+c.events.length].concat(C.LISTS.map(function(L){return L.short+' '+c[L.key].length})).join(' · ')})]);
     ul.appendChild(h('li',null,[b]));
     var o=h('option',{value:c.id,text:c.name}); if(c.id===S.cur)o.selected=true; sel.appendChild(o);
   });
@@ -484,7 +499,7 @@ function extraBox(card,i){
 function copyBtn(get){ return h('button',{class:'btn ghost sm',type:'button',text:'複製',onclick:function(){copyText(get())}}); }
 
 /* ---------- tabs ---------- */
-var TABS=[['profile','個人資料'],['basic','基本設定'],['opening','首場'],['stories','故事'],['detail','詳細設定'],['events','事件'],['draft','草稿整理'],['check','檢查'],['preview','輸出預覽']];
+var TABS=[['profile','個人資料'],['basic','基本設定'],['opening','首場'],['stories','故事'],['detail','詳細設定'],['events','事件'],['modes','專屬模式'],['scenes','場景'],['draft','草稿整理'],['check','檢查'],['preview','輸出預覽']];
 function renderMain(){
   var m=document.getElementById('main'); m.innerHTML='';
   var card=cur();
@@ -493,7 +508,7 @@ function renderMain(){
   var nameInp=h('input',{class:'inp',type:'text',id:'cardName','aria-label':'資料夾名稱',style:'max-width:220px'}); nameInp.value=card.name;
   nameInp.addEventListener('input',function(){card.name=nameInp.value||'未命名';title.textContent=card.name;save();renderSide()});
   var exp=h('button',{class:'btn primary',type:'button',text:'匯出這張 (.zip)',onclick:function(){exportZip([card],card.name+'.zip')}});
-  var dup=h('button',{class:'btn',type:'button',text:'複製一份',onclick:function(){var c=JSON.parse(JSON.stringify(card));c.id=C.uid();c.name=card.name+'（副本）';c.stories.forEach(function(s){s.id=C.uid()});c.events.forEach(function(e){e.id=C.uid()});S.cards.push(c);S.cur=c.id;save();renderAll();toast('已複製成新角色')}});
+  var dup=h('button',{class:'btn',type:'button',text:'複製一份',onclick:function(){var c=JSON.parse(JSON.stringify(card));c.id=C.uid();c.name=card.name+'（副本）';c.stories.forEach(function(s){s.id=C.uid()});c.events.forEach(function(e){e.id=C.uid()});C.LISTS.forEach(function(L){c[L.key].forEach(function(o){o.id=C.uid()})});S.cards.push(c);S.cur=c.id;save();renderAll();toast('已複製成新角色')}});
   var del=h('button',{class:'btn danger',type:'button',text:'刪除'});
   armButton(del,'再按一次刪除',function(){ S.cards=S.cards.filter(function(c){return c.id!==card.id}); S.cur=S.cards[0]?S.cards[0].id:null; save(); renderAll(); toast('已刪除'); });
   m.appendChild(h('div',{class:'head'},[
@@ -507,7 +522,7 @@ function renderMain(){
   });
   m.appendChild(tabs);
   var body=h('div',{id:'tabBody'}); m.appendChild(body);
-  ({profile:tProfile,basic:tBasic,detail:tDetail,opening:tOpening,stories:tStories,events:tEvents,draft:tDraft,check:tCheck,preview:tPreview})[S.tab](card,body);
+  ({profile:tProfile,basic:tBasic,detail:tDetail,opening:tOpening,stories:tStories,events:tEvents,modes:function(c,e){tCustom(c,e,'modes')},scenes:function(c,e){tCustom(c,e,'scenes')},draft:tDraft,check:tCheck,preview:tPreview})[S.tab](card,body);
   badge();
 }
 function badge(){
@@ -557,7 +572,7 @@ function listEditor(card,el,kind){
   var arr=kind==='e'?card.events:card.stories, fname=kind==='e'?'事件':'故事';
   var tb=h('div',{class:'toolbar'});
   tb.appendChild(h('button',{class:'btn primary',type:'button',text:'＋ 新增'+fname,onclick:function(){
-    arr.push(kind==='e'?{id:C.uid(),loc:'',title:'',content:''}:{id:C.uid(),hint:'',title:'',content:''}); save(); renderMain();
+    arr.push(kind==='e'?{id:C.uid(),loc:'',title:'',content:''}:{id:C.uid(),hint:'',title:'',content:''}); save(); renderAll();
     requestAnimationFrame(function(){var last=document.querySelector('.item:last-child'); if(last)last.scrollIntoView({block:'center'})});
   }}));
   if(kind==='e'){
@@ -578,7 +593,7 @@ function listEditor(card,el,kind){
     head.appendChild(h('button',{class:'btn ghost sm',type:'button',text:'↓','aria-label':'下移',disabled:i===arr.length-1?'':false,onclick:function(){arr.splice(i+1,0,arr.splice(i,1)[0]);save();renderMain()}}));
     if(kind==='e') head.appendChild(h('button',{class:'btn ghost sm',type:'button',text:'存成共用範本',onclick:function(){ S.templates.push({id:C.uid(),loc:it.loc,title:it.title||'未命名',content:it.content}); save(); toast('已存成範本，所有角色都能從「從共用範本加入」使用'); renderMain(); }}));
     head.appendChild(h('button',{class:'btn ghost sm',type:'button',text:'複製全文',onclick:function(){ copyText(kind==='e'?('時間和地點\n'+it.loc+'\n\n標題\n'+it.title+'\n\n內容\n'+it.content):('解鎖故事時的提示語\n'+(it.hint||'')+'\n\n故事標題 *'+it.title+'\n\n內容 *\n'+it.content)) }}));
-    var d=h('button',{class:'btn ghost sm danger',type:'button',text:'刪除'}); armButton(d,'確定？',function(){arr.splice(i,1);save();renderMain()}); head.appendChild(d);
+    var d=h('button',{class:'btn ghost sm danger',type:'button',text:'刪除'}); armButton(d,'確定？',function(){arr.splice(i,1);save();renderAll()}); head.appendChild(d);
     box.appendChild(head);
     function inp(key,label,listId){ var id='i-'+it.id+'-'+key; var x=h('input',{class:'inp',type:'text',id:id,list:listId||false}); x.value=it[key]||''; x.addEventListener('input',function(){it[key]=x.value;save();badge(); if(key==='title'){fnSpan.textContent=C.itemFile(fname,i,x.value)+'.txt'}}); return h('div',null,[h('div',{class:'field-top',style:'margin-bottom:2px'},[h('label',{for:id,text:label,style:'margin:0'}),h('span',{class:'count'}),copyBtn(function(){return x.value})]),x]); }
     var g=h('div',{class:'grid'});
@@ -597,6 +612,40 @@ function listEditor(card,el,kind){
 }
 function tStories(card,el){ el.appendChild(cap('→ 故事-1-故事標題.txt、故事-2-故事標題.txt…（依順序編號）')); listEditor(card,el,'s'); }
 function tEvents(card,el){ el.appendChild(cap('→ 事件-1-事件標題.txt、事件-2-事件標題.txt…（依順序編號）')); listEditor(card,el,'e'); }
+
+function tCustom(card,el,key){
+  var L=C.LISTS.filter(function(x){return x.key===key})[0], arr=card[key];
+  el.appendChild(cap('→ '+L.name+'-1-'+L.titleLabel+'.txt、'+L.name+'-2-'+L.titleLabel+'.txt…（依順序編號）'));
+  el.appendChild(h('div',{class:'toolbar'},[h('button',{class:'btn primary',type:'button',text:'＋ 新增'+L.name,onclick:function(){
+    var o={id:C.uid()}; L.fields.forEach(function(f){o[f[0]]=''}); arr.push(o); save(); renderAll();
+    requestAnimationFrame(function(){var last=document.querySelector('.item:last-child'); if(last)last.scrollIntoView({block:'center'})});
+  }})]));
+  var list=h('div',{class:'items'});
+  if(!arr.length) list.appendChild(h('div',{class:'empty',text:'還沒有'+L.name+'。'}));
+  arr.forEach(function(it,i){
+    var box=h('div',{class:'item','data-anchor':L.pre+'.'+it.id});
+    var fnSpan=h('span',{class:'fname',text:C.itemFile(L.name,i,it.title)+'.txt'});
+    var head=h('div',{class:'item-head'},[fnSpan,h('span',{class:'sp'})]);
+    head.appendChild(h('button',{class:'btn ghost sm',type:'button',text:'↑','aria-label':'上移',disabled:i===0?'':false,onclick:function(){arr.splice(i-1,0,arr.splice(i,1)[0]);save();renderMain()}}));
+    head.appendChild(h('button',{class:'btn ghost sm',type:'button',text:'↓','aria-label':'下移',disabled:i===arr.length-1?'':false,onclick:function(){arr.splice(i+1,0,arr.splice(i,1)[0]);save();renderMain()}}));
+    head.appendChild(h('button',{class:'btn ghost sm',type:'button',text:'複製全文',onclick:function(){ copyText(L.fields.map(function(f){return f[1]+'\n'+(it[f[0]]||'')}).join('\n\n')) }}));
+    var d=h('button',{class:'btn ghost sm danger',type:'button',text:'刪除'}); armButton(d,'確定？',function(){arr.splice(i,1);save();renderAll()}); head.appendChild(d);
+    box.appendChild(head);
+    L.fields.forEach(function(f,k){
+      var fk=f[0], id=L.pre+'-'+it.id+'-'+fk, x;
+      if(f[2]==='line'){ x=h('input',{class:'inp',type:'text',id:id}); }
+      else { x=h('textarea',{class:'inp',id:id,spellcheck:'false',style:'min-height:'+(k===1?80:120)+'px;resize:vertical;font-size:13.5px'}); }
+      x.value=it[fk]||'';
+      var cnt=h('span',{class:'count',text:x.value.length+' 字'});
+      x.addEventListener('input',function(){ it[fk]=x.value; cnt.textContent=x.value.length+' 字'; if(fk==='title') fnSpan.textContent=C.itemFile(L.name,i,x.value)+'.txt'; if(f[2]!=='line') autosize(x); save(); badge(); });
+      if(f[2]!=='line') requestAnimationFrame(function(){autosize(x)});
+      box.appendChild(h('div',{class:'field-top',style:k?'margin:12px 0 4px':'margin-bottom:4px'},[h('label',{for:id,class:'tag',text:f[1]}),cnt,copyBtn(function(){return x.value})]));
+      box.appendChild(x);
+    });
+    list.appendChild(box);
+  });
+  el.appendChild(list);
+}
 
 /* ---------- draft sorting ---------- */
 var TARGETS=[['p.name','個人資料 › 姓名'],['p.age','個人資料 › 年齡'],['p.job','個人資料 › 職業'],['p.quote','個人資料 › 一句話'],['p.desc','個人資料 › 敘述'],['p.note','個人資料 › 創作者筆記'],
