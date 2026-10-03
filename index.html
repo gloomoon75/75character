@@ -131,6 +131,15 @@ button{cursor:pointer}
 .item-head{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;padding-bottom:10px;border-bottom:1px dashed var(--line)}
 .fname{font-family:var(--f-mono);font-size:12px;background:var(--gold-soft);border:0;border-radius:999px;padding:2px 11px;color:var(--ink)}
 .item-head .sp{flex:1}
+.fold{border:0;background:none;width:26px;height:26px;border-radius:50%;display:inline-grid;place-items:center;color:var(--muted);font-size:13px;flex:none;transition:transform .15s,background .15s;padding:0}
+.fold:hover{background:var(--accent-soft);color:var(--accent)}
+.folded .fold{transform:rotate(-90deg)}
+.item.folded>:not(.item-head){display:none}
+.item.folded .item-head{margin-bottom:0;padding-bottom:0;border-bottom:0}
+.field.folded>:not(:first-child){display:none}
+.field.folded>.field-top:first-child{margin-bottom:0}
+.fold-title{font-size:13px;color:var(--muted);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:50%}
+.field:not(.folded) .fold-title{display:none}
 .item .grid{display:grid;grid-template-columns:220px 1fr;gap:12px;margin-bottom:10px}
 .item label{display:block;font-family:var(--f-disp);font-size:13px;font-weight:600;letter-spacing:.04em;color:var(--ink);margin-bottom:3px}
 .item .field-top{margin-bottom:4px}
@@ -414,6 +423,7 @@ function load(){
   var s=null; try{ s=JSON.parse(localStorage.getItem(KEY)||'null'); }catch(e){}
   if(!s||!s.cards) s={cards:[],cur:null,tab:'profile',templates:[]};
   if(!s.templates) s.templates=[];
+  if(!s.fold) s.fold={};
   s.cards.forEach(function(c){ C.LISTS.forEach(function(L){ if(!c[L.key]) c[L.key]=[]; }); });
   s.cards.forEach(function(c){ while(c.d.x.length<C.EXTRA_N) c.d.x.push(''); });
   if(!s.cur||!s.cards.some(function(c){return c.id===s.cur})) s.cur=s.cards[0]?s.cards[0].id:null;
@@ -430,7 +440,7 @@ function copyText(txt,btn){
   function fallback(){ var ta=h('textarea',{style:'position:fixed;left:-9999px'}); ta.value=txt; document.body.appendChild(ta); ta.select(); try{document.execCommand('copy');toast('已複製')}catch(e){toast('無法自動複製，請手動選取')} ta.remove(); }
   try{ navigator.clipboard.writeText(txt).then(function(){toast('已複製')},fallback) }catch(e){ fallback() }
 }
-function autosize(ta){ ta.style.height='auto'; ta.style.height=Math.min(ta.scrollHeight+2, Math.max(window.innerHeight*0.75,300))+'px'; }
+function autosize(ta){ if(!ta.offsetParent) return; ta.style.height='auto'; ta.style.height=Math.min(ta.scrollHeight+2, Math.max(window.innerHeight*0.75,300))+'px'; }
 function armButton(btn,label,fn){ // two-step confirm
   btn.addEventListener('click',function(){
     if(btn.classList.contains('armed')){fn();return}
@@ -485,17 +495,31 @@ function extraBox(card,i){
   var tid='f-d-x-'+i+'-t', cid='f-d-x-'+i;
   var ti=h('input',{type:'text',id:tid,placeholder:'標題'}); ti.value=tv;
   var ta=h('textarea',{id:cid,spellcheck:'false',placeholder:'內容'}); ta.value=cv; requestAnimationFrame(function(){autosize(ta)});
-  var cnt=h('span',{class:'count'});
-  function sync(){ var t=ti.value.replace(/\n/g,' '), c=ta.value; card.d.x[i]= c.trim()? t+'\n'+c : t; cnt.textContent=card.d.x[i].length+' 字'; save(); badge(); }
-  cnt.textContent=v.length+' 字';
+  var tc=h('span',{class:'count',text:tv.length+' 字'}), cc=h('span',{class:'count',text:cv.length+' 字'});
+  var ft=h('span',{class:'fold-title',text:tv});
+  function sync(){ var t=ti.value.replace(/\n/g,' '), c=ta.value; card.d.x[i]= c.trim()? t+'\n'+c : t; tc.textContent=ti.value.length+' 字'; cc.textContent=ta.value.length+' 字'; ft.textContent=ti.value; save(); badge(); }
   ti.addEventListener('input',sync); ta.addEventListener('input',function(){autosize(ta);sync()});
   var sub='font-family:var(--f-mono);font-size:11.5px;color:var(--muted)';
-  return h('div',{class:'field','data-anchor':'d.x.'+i},[
-    h('div',{class:'field-top'},[h('span',{class:'tag',text:'附加資訊 '+(i+1)}),cnt,copyBtn(function(){return card.d.x[i]||''})]),
-    h('div',{class:'field-top',style:'margin-bottom:2px'},[h('label',{for:tid,style:sub,text:'標題'}),h('span',{class:'count'}),copyBtn(function(){return ti.value})]), ti,
-    h('div',{class:'field-top',style:'margin:8px 0 2px'},[h('label',{for:cid,style:sub,text:'內容'}),h('span',{class:'count'}),copyBtn(function(){return ta.value})]), ta]);
+  var key=card.id+':x'+i;
+  var box=h('div',{class:'field','data-anchor':'d.x.'+i,'data-fold':key});
+  var top=h('div',{class:'field-top'},[null,h('span',{class:'tag',text:'附加資訊 '+(i+1)}),ft,h('span',{class:'count'}),copyBtn(function(){return card.d.x[i]||''})]);
+  top.insertBefore(foldBtn(box,key),top.firstChild);
+  [top,
+    h('div',{class:'field-top',style:'margin-bottom:2px'},[h('label',{for:tid,style:sub,text:'標題'}),tc,copyBtn(function(){return ti.value})]), ti,
+    h('div',{class:'field-top',style:'margin:8px 0 2px'},[h('label',{for:cid,style:sub,text:'內容'}),cc,copyBtn(function(){return ta.value})]), ta].forEach(function(n){box.appendChild(n)});
+  return box;
 }
 
+function foldBtn(box,key){
+  if(S.fold[key]) box.classList.add('folded');
+  return h('button',{class:'fold',type:'button','aria-label':'收起／展開',title:'收起／展開',text:'▾',onclick:function(){
+    var f=box.classList.toggle('folded'); if(f) S.fold[key]=1; else { delete S.fold[key]; box.querySelectorAll('textarea').forEach(autosize); } save();
+  }});
+}
+function foldAllBtns(sel){
+  function set(v){ document.querySelectorAll(sel).forEach(function(b){ var k=b.getAttribute('data-fold'); b.classList.toggle('folded',v); if(v) S.fold[k]=1; else { delete S.fold[k]; b.querySelectorAll('textarea').forEach(autosize); } }); save(); }
+  return [h('button',{class:'btn ghost sm',type:'button',text:'全部收起',onclick:function(){set(true)}}),h('button',{class:'btn ghost sm',type:'button',text:'全部展開',onclick:function(){set(false)}})];
+}
 function copyBtn(get){ return h('button',{class:'btn ghost sm',type:'button',text:'複製',onclick:function(){copyText(get())}}); }
 
 /* ---------- tabs ---------- */
@@ -557,6 +581,7 @@ function tDetail(card,el){
   var F=h('div',{class:'fields'});
   F.appendChild(h('div',{class:'row2'},[fieldBox(card,'d.likes','喜歡','opt'),fieldBox(card,'d.dislikes','不喜歡','opt')]));
   F.appendChild(fieldBox(card,'d.bday','生日','opt',{inline:true,hint:'例：1930-11-08'}));
+  F.appendChild(h('div',{class:'toolbar',style:'margin:4px 0 -4px'},[h('span',{class:'hint',text:'附加資訊'})].concat(foldAllBtns('.field[data-fold]'))));
   for(var i=0;i<C.EXTRA_N;i++) F.appendChild(extraBox(card,i));
   el.appendChild(F);
 }
@@ -582,12 +607,13 @@ function listEditor(card,el,kind){
     tb.appendChild(sel);
     if(S.templates.length) tb.appendChild(h('button',{class:'btn ghost sm',type:'button',text:'管理範本',onclick:manageTemplates}));
   }
+  if(arr.length) foldAllBtns('.item[data-fold]').forEach(function(b){tb.appendChild(b)});
   el.appendChild(tb);
   var list=h('div',{class:'items'});
   if(!arr.length) list.appendChild(h('div',{class:'empty',text:'還沒有'+fname+'。'}));
   arr.forEach(function(it,i){
-    var box=h('div',{class:'item','data-anchor':(kind==='e'?'e.':'s.')+it.id});
-    var fnSpan=h('span',{class:'fname',text:C.itemFile(fname,i,it.title)+'.txt'}); var head=h('div',{class:'item-head'},[fnSpan]);
+    var fk=(kind==='e'?'e.':'s.')+it.id, box=h('div',{class:'item','data-anchor':fk,'data-fold':fk});
+    var fnSpan=h('span',{class:'fname',text:C.itemFile(fname,i,it.title)+'.txt'}); var head=h('div',{class:'item-head'},[foldBtn(box,fk),fnSpan]);
     head.appendChild(h('span',{class:'sp'}));
     head.appendChild(h('button',{class:'btn ghost sm',type:'button',text:'↑','aria-label':'上移',disabled:i===0?'':false,onclick:function(){arr.splice(i-1,0,arr.splice(i,1)[0]);save();renderMain()}}));
     head.appendChild(h('button',{class:'btn ghost sm',type:'button',text:'↓','aria-label':'下移',disabled:i===arr.length-1?'':false,onclick:function(){arr.splice(i+1,0,arr.splice(i,1)[0]);save();renderMain()}}));
@@ -619,13 +645,13 @@ function tCustom(card,el,key){
   el.appendChild(h('div',{class:'toolbar'},[h('button',{class:'btn primary',type:'button',text:'＋ 新增'+L.name,onclick:function(){
     var o={id:C.uid()}; L.fields.forEach(function(f){o[f[0]]=''}); arr.push(o); save(); renderAll();
     requestAnimationFrame(function(){var last=document.querySelector('.item:last-child'); if(last)last.scrollIntoView({block:'center'})});
-  }})]));
+  }})].concat(arr.length?foldAllBtns('.item[data-fold]'):[])));
   var list=h('div',{class:'items'});
   if(!arr.length) list.appendChild(h('div',{class:'empty',text:'還沒有'+L.name+'。'}));
   arr.forEach(function(it,i){
-    var box=h('div',{class:'item','data-anchor':L.pre+'.'+it.id});
+    var fk=L.pre+'.'+it.id, box=h('div',{class:'item','data-anchor':fk,'data-fold':fk});
     var fnSpan=h('span',{class:'fname',text:C.itemFile(L.name,i,it.title)+'.txt'});
-    var head=h('div',{class:'item-head'},[fnSpan,h('span',{class:'sp'})]);
+    var head=h('div',{class:'item-head'},[foldBtn(box,fk),fnSpan,h('span',{class:'sp'})]);
     head.appendChild(h('button',{class:'btn ghost sm',type:'button',text:'↑','aria-label':'上移',disabled:i===0?'':false,onclick:function(){arr.splice(i-1,0,arr.splice(i,1)[0]);save();renderMain()}}));
     head.appendChild(h('button',{class:'btn ghost sm',type:'button',text:'↓','aria-label':'下移',disabled:i===arr.length-1?'':false,onclick:function(){arr.splice(i+1,0,arr.splice(i,1)[0]);save();renderMain()}}));
     head.appendChild(h('button',{class:'btn ghost sm',type:'button',text:'複製全文',onclick:function(){ copyText(L.fields.map(function(f){return f[1]+'\n'+(it[f[0]]||'')}).join('\n\n')) }}));
@@ -738,7 +764,7 @@ function tCheck(card,el){
   });
   el.appendChild(list);
 }
-function jump(anchor){ requestAnimationFrame(function(){ var el=document.querySelector('[data-anchor="'+anchor+'"]'); if(!el)return; el.scrollIntoView({block:'center'}); var f=el.querySelector('textarea,input'); if(f)f.focus({preventScroll:true}); }); }
+function jump(anchor){ requestAnimationFrame(function(){ var el=document.querySelector('[data-anchor="'+anchor+'"]'); if(!el)return; if(el.classList.contains('folded')){ el.classList.remove('folded'); delete S.fold[el.getAttribute('data-fold')]; save(); el.querySelectorAll('textarea').forEach(autosize); } el.scrollIntoView({block:'center'}); var f=el.querySelector('textarea,input'); if(f)f.focus({preventScroll:true}); }); }
 
 /* ---------- preview ---------- */
 var pvSel=0;
