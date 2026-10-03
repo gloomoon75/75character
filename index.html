@@ -261,13 +261,13 @@ var CORE = (function(){
 
   // header label -> [fileType, key, style]; style: 'inline' (value after " *") or 'block'
   var FILES = {
-    '個人資料':[['姓名','p.name','inline','*'],['年齡','p.age','inline','*'],['職業','p.job','inline','*'],['來自角色的一句話','p.quote','inline','*'],['敘述','p.desc','block','opt'],['創作者筆記','p.note','block','opt']],
-    '基本設定':[['性別','b.gender','block',''],['基本資訊','b.info','block','*'],['性格','b.persona','block','*'],['說話風格與習慣','b.speech','block','*']],
+    '個人資料':[['姓名','p.name','inline','*'],['年齡','p.age','inline','*'],['性別','b.gender','block',''],['職業','p.job','inline','*'],['來自角色的一句話','p.quote','inline','*'],['敘述','p.desc','block','opt'],['創作者筆記','p.note','block','opt']],
+    '基本設定':[['基本資訊','b.info','block','*'],['性格','b.persona','block','*'],['說話風格與習慣','b.speech','block','*']],
     '詳細設定':[['喜歡','d.likes','block','opt'],['不喜歡','d.dislikes','block','opt'],['生日','d.bday','block','opt']],
     '首場':[['情境腳本','o.script','block','opt'],['角色對話','o.dialog','block','opt']]
   };
   var ALLOWED = {
-    '個人資料':['姓名','年齡','職業','來自角色的一句話','敘述','創作者筆記'],
+    '個人資料':['姓名','年齡','性別','職業','來自角色的一句話','敘述','創作者筆記'],
     '基本設定':['性別','基本資訊','性格','說話風格與習慣'],
     '詳細設定':['喜歡','不喜歡','生日','附加資訊'],
     '首場':['情境腳本','角色對話'],
@@ -304,7 +304,7 @@ var CORE = (function(){
       if(FILES[k]){
         var parsed=parseFields(t,k);
         parsed.fields.forEach(function(f){
-          var def=FILES[k].filter(function(d){return d[0]===f.label})[0];
+          var def=FILES[k].filter(function(d){return d[0]===f.label})[0]; if(!def && f.label==='性別') def=['性別','b.gender'];
           if(def) set(c,def[1],f.value);
           else { var xm=f.label.match(/^附加資訊 (\d+)$/); if(xm){var n=+xm[1]; if(n>=1&&n<=EXTRA_N) c.d.x[n-1]=f.value;} }
         });
@@ -561,6 +561,7 @@ function tProfile(card,el){
   var F=h('div',{class:'fields'});
   var r=h('div',{class:'row2'},[fieldBox(card,'p.name','姓名','*',{inline:true}),fieldBox(card,'p.age','年齡','*',{inline:true})]);
   F.appendChild(r);
+  F.appendChild(genderBox(card));
   F.appendChild(fieldBox(card,'p.job','職業','*',{inline:true}));
   F.appendChild(fieldBox(card,'p.quote','來自角色的一句話','*',{inline:true}));
   F.appendChild(fieldBox(card,'p.desc','敘述','opt',{big:true}));
@@ -570,7 +571,6 @@ function tProfile(card,el){
 function tBasic(card,el){
   el.appendChild(cap('→ 基本設定.txt'));
   var F=h('div',{class:'fields'});
-  F.appendChild(genderBox(card));
   F.appendChild(fieldBox(card,'b.info','基本資訊','*',{big:true}));
   F.appendChild(fieldBox(card,'b.persona','性格','*',{big:true}));
   F.appendChild(fieldBox(card,'b.speech','說話風格與習慣','*',{big:true}));
