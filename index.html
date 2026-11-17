@@ -77,7 +77,15 @@ button{cursor:pointer}
 .card-list button[aria-current="true"]::before{content:"";position:absolute;left:0;top:10px;bottom:10px;width:3px;border-radius:3px;background:var(--gold)}
 .card-list .nm{font-family:var(--f-disp);font-size:15.5px;font-weight:600;letter-spacing:.03em}
 .card-list .meta{font-size:11px;color:var(--side-muted);font-variant-numeric:tabular-nums;letter-spacing:.05em}
-.side-note{font-size:11.5px;line-height:1.7;color:var(--side-muted);margin-top:auto;border-top:1px solid var(--side-line);padding-top:14px}
+.theme-box{margin-top:auto;display:flex;flex-direction:column;gap:10px}
+.swatches{display:flex;flex-wrap:wrap;gap:6px}
+.sw{width:24px;height:24px;flex:none;border-radius:50%;border:2px solid var(--side-line);padding:0;position:relative;transition:transform .15s}
+.sw:hover{transform:scale(1.1)}
+.sw[aria-pressed="true"]{border-color:var(--side-ink);box-shadow:0 0 0 2px var(--side-bg),0 0 0 4px var(--gold)}
+.mode-seg{display:grid;grid-template-columns:repeat(3,1fr);border:1px solid var(--side-line);border-radius:999px;padding:2px}
+.mode-seg button{background:none;border:0;border-radius:999px;color:var(--side-muted);font-size:12px;padding:4px 0}
+.mode-seg button[aria-pressed="true"]{background:var(--side-active);color:var(--side-ink)}
+.side-note{font-size:11.5px;line-height:1.7;color:var(--side-muted);border-top:1px solid var(--side-line);padding-top:14px}
 
 /* ---- buttons ---- */
 .btn{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 14px;font-size:13px;white-space:nowrap;transition:border-color .15s,color .15s,background .15s,filter .15s}
@@ -232,6 +240,11 @@ code,.mono{font-family:var(--f-mono);font-size:.92em}
     <div class="mobile-bar"><select id="mobileSel" aria-label="切換角色"></select></div>
     <div class="sec-label lib">角色庫</div>
     <ul class="card-list" id="cardList"></ul>
+    <div class="theme-box">
+      <div class="sec-label">主題顏色</div>
+      <div class="swatches" id="swatches" role="group" aria-label="主題顏色"></div>
+      <div class="mode-seg" id="modeSeg" role="group" aria-label="明暗模式"></div>
+    </div>
     <div class="side-note">資料只存在這個瀏覽器裡，不會上傳。清除瀏覽器資料就會消失，完成後記得「全部匯出」備份。</div>
   </aside>
   <main class="main" id="main"></main>
@@ -419,6 +432,39 @@ function skeletonCard(name){
 }
 
 var S=load();
+/* ---------- theme ---------- */
+var TVARS=['bg','surface','surface-2','line','line-2','accent','accent-soft','gold','gold-soft','side-bg','side-hover','side-active','side-line'];
+// 每組：淺色 l / 深色 d，順序同 TVARS
+var THEMES=[
+  {id:'plum', name:'梅紅',
+   l:['#F3EDE3','#FFFCF7','#F7F1E7','#E2D6C6','#ECE3D6','#7B3A5D','#F2E3EA','#B08948','#F3E8D2','#2B2330','#372D3C','#4A3848','#3F3444'],
+   d:['#17131A','#211B25','#1B161F','#3A3140','#2E2733','#DDA3C1','#3A2632','#D6B47A','#3A3122','#110E13','#1E1822','#2D2230','#2A2330']},
+  {id:'green', name:'森林綠',
+   l:['#EBF0E8','#FAFCF8','#F1F5EE','#CFDCCB','#DEE7DA','#2E6A54','#DCEDE4','#A8853F','#F2E9D3','#1F2E28','#283A33','#30483F','#33453D'],
+   d:['#111815','#19221E','#141C18','#2E3D36','#24302B','#8ECDB1','#1D3329','#D6B47A','#37301F','#0C1210','#16201C','#1E2C26','#22302A']},
+  {id:'blue', name:'湖水藍',
+   l:['#E8EEF3','#F9FBFD','#EFF4F8','#CCD8E3','#DCE5EE','#25607A','#DCEBF2','#B0804A','#F3E6D6','#1E2A35','#283745','#2F4456','#334252'],
+   d:['#10161B','#18212A','#131B22','#2C3B48','#23303B','#86C3DA','#1B3240','#DDB27F','#382E22','#0B1015','#151E26','#1C2833','#212D38']},
+  {id:'lilac', name:'丁香紫',
+   l:['#F5F0FA','#FFFDFF','#F9F5FC','#E5DBF1','#EEE7F6','#8E6FBF','#EFE6FA','#E09AB0','#FBE8EE','#4A3F63','#554971','#62557F','#5A4E72'],
+   d:['#17141E','#211D2B','#1B1824','#3A3350','#2E283F','#C9B2F0','#33294A','#F0B6C8','#3D2833','#100E16','#1C1826','#272135','#2A2438']},
+  {id:'peach', name:'蜜桃粉',
+   l:['#FBF0EE','#FFFCFB','#FDF5F3','#F1DAD4','#F6E7E2','#C2706F','#FBE4E1','#EBA392','#FCEBE5','#6A4652','#77525E','#86606C','#7A5662'],
+   d:['#1B1515','#251D1D','#1F1818','#433333','#352929','#F2B3AE','#422B2A','#F5C2B0','#3F2A28','#130F0F','#1F1919','#2B2222','#2E2525']}
+];
+var mq=window.matchMedia?window.matchMedia('(prefers-color-scheme: dark)'):null;
+function applyTheme(){
+  var t=S.theme||{}, th=THEMES.filter(function(x){return x.id===t.color})[0]||THEMES[0], mode=t.mode||'auto';
+  var root=document.documentElement;
+  if(mode==='auto') root.removeAttribute('data-theme'); else root.setAttribute('data-theme',mode);
+  var dark= mode==='dark' || (mode==='auto' && mq && mq.matches);
+  var v=dark?th.d:th.l;
+  TVARS.forEach(function(k,n){ root.style.setProperty('--'+k,v[n]); });
+  var sw=document.getElementById('swatches'), ms=document.getElementById('modeSeg');
+  if(sw){ sw.innerHTML=''; THEMES.forEach(function(x){ sw.appendChild(h('button',{class:'sw',type:'button',title:x.name,'aria-label':x.name,'aria-pressed':String(x.id===th.id),style:'background:linear-gradient(135deg,'+x.l[5]+' 0 50%,'+x.l[0]+' 50% 100%)',onclick:function(){ S.theme=S.theme||{}; S.theme.color=x.id; save(); applyTheme(); }})); }); }
+  if(ms){ ms.innerHTML=''; [['auto','自動'],['light','淺色'],['dark','深色']].forEach(function(m){ ms.appendChild(h('button',{type:'button','aria-pressed':String(m[0]===mode),text:m[1],onclick:function(){ S.theme=S.theme||{}; S.theme.mode=m[0]; save(); applyTheme(); }})); }); }
+}
+if(mq){ if(mq.addEventListener) mq.addEventListener('change',applyTheme); else if(mq.addListener) mq.addListener(applyTheme); }
 function load(){
   var s=null; try{ s=JSON.parse(localStorage.getItem(KEY)||'null'); }catch(e){}
   if(!s||!s.cards) s={cards:[],cur:null,tab:'profile',templates:[]};
@@ -863,6 +909,7 @@ document.getElementById('fileImport').onchange=function(e){ var fs=Array.from(e.
 document.getElementById('btnExportAll').onclick=function(){ if(!S.cards.length){toast('沒有角色可以匯出');return} exportZip(S.cards,'角色卡.zip') };
 document.addEventListener('dragover',function(e){e.preventDefault()});
 document.addEventListener('drop',function(e){ if(!e.dataTransfer||!e.dataTransfer.files.length)return; if(e.target&&e.target.id==='draftText')return; e.preventDefault(); importFiles(Array.from(e.dataTransfer.files)).catch(function(err){toast('匯入失敗：'+(err&&err.message||err))}); });
+applyTheme();
 renderAll();
 })();
 </script>
